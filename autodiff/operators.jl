@@ -1,13 +1,9 @@
-# ./autodiff/operators.jl
-
-# --- Helper for Broadcasting Gradients ---
-"Sumuje gradient `x_grad` tak, aby pasował do `target_size`, obsługując przypadki broadcastingu."
 function sum_to(x_grad::AbstractArray{T}, target_size::Tuple) where T
     if size(x_grad) == target_size
         return x_grad
     end
 
-    if isempty(target_size) || all(d == 1 for d in target_size) # Cel to skalar
+    if isempty(target_size) || all(d == 1 for d in target_size)
         return sum(x_grad)::T
     end
 
@@ -19,7 +15,7 @@ function sum_to(x_grad::AbstractArray{T}, target_size::Tuple) where T
         if d > ndims_target || (target_size[d] == 1 && size(x_grad, d) > 1)
             push!(dims_to_sum, d)
         elseif d <= ndims_target && target_size[d] != 1 && size(x_grad,d) != 1 && size(x_grad, d) != target_size[d]
-             error("Niekompatybilne kształty w sum_to: $(size(x_grad)) do $(target_size) wzdłuż wymiaru $d.")
+             error("Dimension $d: $(size(x_grad, d)) != $(target_size[d])")
         end
     end
     
@@ -31,13 +27,7 @@ function sum_to(x_grad::AbstractArray{T}, target_size::Tuple) where T
         try
             reshape(result, target_size)
         catch e
-            @error """
-            Błąd podczas reshape w sum_to:
-            Nie można przekształcić gradientu o rozmiarze $(size(result)) do docelowego rozmiaru $(target_size).
-            Oryginalny gradient (przed sumowaniem): $(x_grad) (rozmiar $(size(x_grad))).
-            Błąd: $e
-            """
-            rethrow(e)
+            error("Cannot reshape gradient from $(size(result)) to $(target_size).")
         end
     end
 end
@@ -45,17 +35,15 @@ end
 function sum_to(x_scalar_grad::T, target_size::Tuple) where T<:Real
     return fill(x_scalar_grad, target_size)::AbstractArray{T}
 end
-function sum_to(x_scalar_grad::T, target_size::Tuple{}) where T<:Real # Gradient i cel są skalarami
+function sum_to(x_scalar_grad::T, target_size::Tuple{}) where T<:Real
     return x_scalar_grad::T
 end
 
-# --- Overloaded Operations ---
 
-# Addition
 function Base.:+(a::Node{T}, b::Node{T}) where {T<:Real}
     val_a = value(a)
     val_b = value(b)
-    result_val = val_a .+ val_b # Operacja poelemencowa na wartościach
+    result_val = val_a .+ val_b 
     op_inputs = Node[a, b]
     local new_output_node
 
@@ -68,7 +56,6 @@ function Base.:+(a::Node{T}, b::Node{T}) where {T<:Real}
         grad_a_unshaped = output_grad
         grad_b_unshaped = output_grad
         
-        # Warunkowe sum_to, jak w referencji SimpleAutoDiff (dla +)
         grad_a_final = grad_a_unshaped
         grad_b_final = grad_b_unshaped
         if size(val_a) != size(output_grad); grad_a_final = sum_to(output_grad, size(val_a)); end
@@ -83,11 +70,11 @@ end
 Base.:+(a::Node{T}, b_val::Real) where T = a + Node(fill(T(b_val), size(value(a))); is_trainable=false)
 Base.:+(a_val::Real, b::Node{T}) where T = Node(fill(T(a_val), size(value(b))); is_trainable=false) + b
 
-# Subtraction
+
 function Base.:-(a::Node{T}, b::Node{T}) where {T<:Real}
     val_a = value(a)
     val_b = value(b)
-    result_val = val_a .- val_b # Operacja poelemencowa na wartościach
+    result_val = val_a .- val_b 
     op_inputs = Node[a, b]
     local new_output_node
 
@@ -100,7 +87,6 @@ function Base.:-(a::Node{T}, b::Node{T}) where {T<:Real}
         grad_a_val = output_grad
         grad_b_val = -output_grad
         
-        # Warunkowe sum_to
         grad_a_final = grad_a_val
         grad_b_final = grad_b_val
         if size(val_a) != size(output_grad); grad_a_final = sum_to(grad_a_val, size(val_a)); end
@@ -115,7 +101,6 @@ end
 Base.:-(a::Node{T}, b_val::Real) where T = a - Node(fill(T(b_val), size(value(a))); is_trainable=false)
 Base.:-(a_val::Real, b::Node{T}) where T = Node(fill(T(a_val), size(value(b))); is_trainable=false) - b
 
-# Unary minus
 function Base.:-(a::Node{T}) where {T<:Real}
     val_a = value(a)
     result_val = -val_a
@@ -130,7 +115,6 @@ function Base.:-(a::Node{T}) where {T<:Real}
         end
         grad_a_val = -output_grad
         
-        # Warunkowe sum_to
         grad_a_final = grad_a_val
         if size(val_a) != size(output_grad); grad_a_final = sum_to(grad_a_val, size(val_a)); end
         accumulate_gradient!(a, grad_a_final)
@@ -139,11 +123,10 @@ function Base.:-(a::Node{T}) where {T<:Real}
     return new_output_node
 end
 
-# Multiplication (Base.:*) - teraz domyślnie poelemencowe
 function Base.:*(a::Node{T}, b::Node{T}) where {T<:Real}
     val_a = value(a)
     val_b = value(b)
-    result_val = val_a .* val_b # Domyślnie mnożenie poelemencowe
+    result_val = val_a .* val_b
     op_inputs = Node[a, b]
     local new_output_node
 
@@ -156,7 +139,6 @@ function Base.:*(a::Node{T}, b::Node{T}) where {T<:Real}
         grad_a_unshaped = output_grad .* val_b
         grad_b_unshaped = output_grad .* val_a
         
-        # W referencji dla mnożenia element-wise, sum_to było bezwarunkowe
         accumulate_gradient!(a, sum_to(grad_a_unshaped, size(val_a)))
         accumulate_gradient!(b, sum_to(grad_b_unshaped, size(val_b)))
     end
@@ -166,7 +148,6 @@ end
 Base.:*(a::Node{T}, b_val::Real) where T = a * Node(fill(T(b_val), size(value(a))); is_trainable=false)
 Base.:*(a_val::Real, b::Node{T}) where T = Node(fill(T(a_val), size(value(b))); is_trainable=false) * b
 
-# Matrix Multiplication (pozostaje jako osobna funkcja)
 function matmul(a::Node{T}, b::Node{T}) where T
     val_a = value(a)
     val_b = value(b)
@@ -178,7 +159,7 @@ function matmul(a::Node{T}, b::Node{T}) where T
         error("Niekompatybilne wymiary wewnętrzne dla matmul Node $(a) i Node $(b): $(size(val_a)) (wewn. $(dim_a_inner)) i $(size(val_b)) (wewn. $(dim_b_inner))")
     end
 
-    result_val = val_a * val_b # Standardowe mnożenie macierzowe Julii
+    result_val = val_a * val_b
     op_inputs = Node[a, b]
     local new_output_node
 
@@ -191,7 +172,6 @@ function matmul(a::Node{T}, b::Node{T}) where T
         grad_a = output_grad * transpose(val_b)
         grad_b = transpose(val_a) * output_grad
         
-        # W referencji matmul nie miał jawnego sum_to, zakładając pasujące kształty.
         accumulate_gradient!(a, grad_a)
         accumulate_gradient!(b, grad_b)
     end
@@ -199,13 +179,12 @@ function matmul(a::Node{T}, b::Node{T}) where T
     return new_output_node
 end
 
-# Division (Base.:/) - teraz domyślnie poelemencowe
 function Base.:/(a::Node{T}, b::Node{T}) where {T<:Real}
     val_a = value(a)
     val_b = value(b)
     eps_T = T(1e-8)
     denom_stable = val_b .+ eps_T
-    result_val = val_a ./ denom_stable # Domyślnie dzielenie poelemencowe
+    result_val = val_a ./ denom_stable
     op_inputs = Node[a, b]
     local new_output_node
 
@@ -218,7 +197,6 @@ function Base.:/(a::Node{T}, b::Node{T}) where {T<:Real}
         grad_a_unshaped = output_grad ./ denom_stable
         grad_b_unshaped = -output_grad .* val_a ./ (denom_stable .^ 2)
         
-        # W referencji dla dzielenia, sum_to było bezwarunkowe
         accumulate_gradient!(a, sum_to(grad_a_unshaped, size(val_a)))
         accumulate_gradient!(b, sum_to(grad_b_unshaped, size(val_b)))
     end
@@ -228,14 +206,13 @@ end
 Base.:/(a::Node{T}, b_val::Real) where T = a / Node(fill(T(b_val), size(value(a))); is_trainable=false)
 Base.:/(a_val::Real, b::Node{T}) where T = Node(fill(T(a_val), size(value(b))); is_trainable=false) / b
 
-# Power (Base.:^) - teraz domyślnie poelemencowe
 function Base.:^(a::Node{T}, n_val::Real) where {T<:Real}
     val_a = value(a)
     n_T = T(n_val)
     if any(x -> x < 0 && (n_T != round(n_T) && n_T < 1.0), val_a)
          @warn "Potęgowanie ujemnej podstawy w Node $(a) do wykładnika $(n_T) może prowadzić do problemów."
     end
-    result_val = val_a .^ n_T # Domyślnie potęgowanie poelemencowe
+    result_val = val_a .^ n_T
     op_inputs = Node[a]
     local new_output_node
 
@@ -248,31 +225,28 @@ function Base.:^(a::Node{T}, n_val::Real) where {T<:Real}
         
         eps_T_pow = Base.eps(T)
         _sign_val_a = isa(val_a, AbstractArray) ? sign.(val_a) : sign(val_a)
-        base_stable_for_grad = val_a .+ (T.(_sign_val_a) .* eps_T_pow) # Stabilizacja z referencji
+        base_stable_for_grad = val_a .+ (T.(_sign_val_a) .* eps_T_pow)
 
         grad_a_unshaped = if n_T == zero(T)
             zeros_like_val_a = similar(val_a, T); fill!(zeros_like_val_a, zero(T))
             output_grad .* zeros_like_val_a
         else
             term_pow = n_T - one(T)
-            # Ostrożne obliczanie potęgi dla gradientu, unikając problemów z zerem
             pow_component = ifelse.( (val_a .== zero(T)) .& (n_T .> one(T)), 
                                      zero(T), 
                                      base_stable_for_grad .^ term_pow)
             output_grad .* n_T .* pow_component
         end
         
-        # W referencji dla potęgowania, sum_to było bezwarunkowe
         accumulate_gradient!(a, sum_to(grad_a_unshaped, size(val_a)))
     end
     new_output_node = Node(result_val, op_inputs, backward_function_impl)
     return new_output_node
 end
 
-# Exponential (element-wise)
 function Base.exp(a::Node{T}) where {T<:Real}
     val_a = value(a)
-    result_val = exp.(val_a) # Operacja poelemencowa
+    result_val = exp.(val_a)
     op_inputs = Node[a]
     local new_output_node
 
@@ -283,14 +257,12 @@ function Base.exp(a::Node{T}) where {T<:Real}
             return
         end
         grad_a_unshaped = output_grad .* result_val
-        # W referencji dla exp, sum_to było bezwarunkowe
         accumulate_gradient!(a, sum_to(grad_a_unshaped, size(val_a)))
     end
     new_output_node = Node(result_val, op_inputs, backward_function_impl)
     return new_output_node
 end
 
-# Logarithm (element-wise, natural log)
 function Base.log(a::Node{T}; ϵ::Union{Nothing,Real}=nothing) where {T<:Real}
     val_a = value(a)
     effective_eps = T(ϵ === nothing ? Base.eps(T(1.0)) : ϵ)
@@ -298,7 +270,7 @@ function Base.log(a::Node{T}; ϵ::Union{Nothing,Real}=nothing) where {T<:Real}
         @warn "Logarytmowanie niedodatniej wartości w Node $(a). Użyto epsilon $(effective_eps) dla stabilizacji."
     end
     value_stable_for_log = max.(val_a, effective_eps)
-    result_val = log.(value_stable_for_log) # Operacja poelemencowa
+    result_val = log.(value_stable_for_log)
     op_inputs = Node[a]
     local new_output_node
 
@@ -309,18 +281,16 @@ function Base.log(a::Node{T}; ϵ::Union{Nothing,Real}=nothing) where {T<:Real}
             return
         end
         grad_a_unshaped = output_grad ./ value_stable_for_log
-        # W referencji dla log, sum_to było bezwarunkowe
         accumulate_gradient!(a, sum_to(grad_a_unshaped, size(val_a)))
     end
     new_output_node = Node(result_val, op_inputs, backward_function_impl)
     return new_output_node
 end
 
-# Max (element-wise max(a, scalar_val))
 function Base.max(a::Node{T}, scalar_val::Real) where {T<:Real}
     val_a = value(a)
     val_T_scalar = T(scalar_val)
-    result_val = max.(val_a, val_T_scalar) # Operacja poelemencowa
+    result_val = max.(val_a, val_T_scalar)
     op_inputs = Node[a]
     local new_output_node
 
@@ -332,7 +302,6 @@ function Base.max(a::Node{T}, scalar_val::Real) where {T<:Real}
         end
         mask = T.(val_a .> val_T_scalar)
         grad_a_unshaped = output_grad .* mask
-        # W referencji dla max, sum_to było bezwarunkowe
         accumulate_gradient!(a, sum_to(grad_a_unshaped, size(val_a)))
     end
     new_output_node = Node(result_val, op_inputs, backward_function_impl)
@@ -340,7 +309,6 @@ function Base.max(a::Node{T}, scalar_val::Real) where {T<:Real}
 end
 Base.max(scalar_val::Real, a::Node{T}) where T = Base.max(a, scalar_val)
 
-# Sum (redukcja tablicy do skalara)
 function Base.sum(a::Node{T}) where {T<:Real}
     val_a = value(a)
     result_val = sum(val_a)::T
@@ -356,18 +324,16 @@ function Base.sum(a::Node{T}) where {T<:Real}
         if !isa(output_grad, Real)
              @warn "Oczekiwano skalarnego gradientu dla operacji sum dla Node $(new_output_node), otrzymano $(typeof(output_grad)) o rozmiarze $(size(output_grad))."
         end
-        grad_a_filled = fill(output_grad, size(val_a)) # Jak w referencji
+        grad_a_filled = fill(output_grad, size(val_a))
         accumulate_gradient!(a, grad_a_filled)
     end
     new_output_node = Node(result_val, op_inputs, backward_function_impl)
     return new_output_node
 end
 
-# --- Funkcje Aktywacji ---
-
 function relu(a::Node{T}) where {T<:Real}
     val_a = value(a)
-    result_val = max.(val_a, zero(T)) # Operacja poelemencowa
+    result_val = max.(val_a, zero(T))
     op_inputs = Node[a]
     local new_output_node
 
@@ -416,7 +382,7 @@ end
 
 function Base.tanh(a::Node{T}) where {T<:Real}
     val_a = value(a)
-    result_val = tanh.(val_a) # Operacja poelemencowa
+    result_val = tanh.(val_a)
     op_inputs = Node[a]
     local new_output_node
 

@@ -16,34 +16,34 @@ mutable struct Node{T<:Real}
     end
 end
 
-value(n::Node) = n.value
+value(node::Node) = node.value
 value(x::Real) = x
 
-grad(n::Node) = n.gradient
+grad(node::Node) = node.gradient
 
-_eltype(n::Node{T}) where T = T
+_eltype(node::Node{T}) where T = T
 _eltype(arr::AbstractArray{T}) where T = T
 _eltype(x::T) where T<:Real = T
 
 # Set or initializes the gradient for a Node.
-function grad!(n::Node{T}, g_val) where T
-    g_converted = if isa(g_val, AbstractArray)
-        convert(AbstractArray{T}, g_val)
-    elseif isa(g_val, Real)
-        convert(T, g_val)
+function grad!(node::Node{T}, gradient_value) where T
+    gradient_converted = if isa(gradient_value, AbstractArray)
+        convert(AbstractArray{T}, gradient_value)
+    elseif isa(gradient_value, Real)
+        convert(T, gradient_value)
     else
-        @error "Incorrect gradient type: $(typeof(g_val)). Expected Real or AbstractArray for Node $(n)."
+        @error "Incorrect gradient type: $(typeof(gradient_value)). Expected Real or AbstractArray for Node $(node)."
         return
     end
 
-    if n.gradient === nothing
-        if isa(n.value, AbstractArray) && isa(g_converted, Real)
-            n.gradient = fill(g_converted, size(value(n)))
+    if node.gradient === nothing
+        if isa(node.value, AbstractArray) && isa(gradient_converted, Real)
+            node.gradient = fill(gradient_converted, size(value(node)))
         else
-            n.gradient = deepcopy(g_converted)
+            node.gradient = deepcopy(gradient_converted)
         end
     else
-        accumulate_gradient!(n, g_converted)
+        accumulate_gradient!(node, gradient_converted)
     end
 end
 
