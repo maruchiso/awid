@@ -50,7 +50,7 @@ function Base.:+(a::Node{T}, b::Node{T}) where {T<:Real}
     function backward_function_impl()
         output_grad = grad(new_output_node)
         if output_grad === nothing
-            @error "Krytyczny błąd w backward (+) : gradient wyjścia jest 'nothing' dla Node $(new_output_node)."
+            @error "Output gradient is `nothing` for node $new_output_node"
             return
         end
         grad_a_unshaped = output_grad
@@ -81,7 +81,7 @@ function Base.:-(a::Node{T}, b::Node{T}) where {T<:Real}
     function backward_function_impl()
         output_grad = grad(new_output_node)
         if output_grad === nothing
-            @error "Krytyczny błąd w backward (-) : gradient wyjścia jest 'nothing' dla Node $(new_output_node)."
+            @error "Output gradient is `nothing` for node $new_output_node"
             return
         end
         grad_a_val = output_grad
@@ -110,7 +110,7 @@ function Base.:-(a::Node{T}) where {T<:Real}
     function backward_function_impl()
         output_grad = grad(new_output_node)
         if output_grad === nothing
-            @error "Krytyczny błąd w backward (unary -) : gradient wyjścia jest 'nothing' dla Node $(new_output_node)."
+            @error "Output gradient is `nothing` for node $new_output_node"
             return
         end
         grad_a_val = -output_grad
@@ -133,7 +133,7 @@ function Base.:*(a::Node{T}, b::Node{T}) where {T<:Real}
     function backward_function_impl()
         output_grad = grad(new_output_node)
         if output_grad === nothing
-            @error "Krytyczny błąd w backward (*) : gradient wyjścia jest 'nothing' dla Node $(new_output_node)."
+            @error "Output gradient is `nothing` for node $new_output_node"
             return
         end
         grad_a_unshaped = output_grad .* val_b
@@ -156,7 +156,7 @@ function matmul(a::Node{T}, b::Node{T}) where T
     dim_b_inner = isa(val_b, AbstractVector) ? length(val_b) : size(val_b, 1)
 
     if dim_a_inner != dim_b_inner
-        error("Niekompatybilne wymiary wewnętrzne dla matmul Node $(a) i Node $(b): $(size(val_a)) (wewn. $(dim_a_inner)) i $(size(val_b)) (wewn. $(dim_b_inner))")
+        error("Shape mismatch in matmul: $(size(val_a)) (inner=$dim_a_inner) vs $(size(val_b)) (inner=$dim_b_inner)")
     end
 
     result_val = val_a * val_b
@@ -166,7 +166,7 @@ function matmul(a::Node{T}, b::Node{T}) where T
     function backward_function_impl()
         output_grad = grad(new_output_node)
         if output_grad === nothing
-            @error "Krytyczny błąd w backward (matmul) : gradient wyjścia jest 'nothing' dla Node $(new_output_node)."
+            @error "Output gradient is `nothing` for node $new_output_node"
             return
         end
         grad_a = output_grad * transpose(val_b)
@@ -191,7 +191,7 @@ function Base.:/(a::Node{T}, b::Node{T}) where {T<:Real}
     function backward_function_impl()
         output_grad = grad(new_output_node)
         if output_grad === nothing
-            @error "Krytyczny błąd w backward (/) : gradient wyjścia jest 'nothing' dla Node $(new_output_node)."
+            @error "Output gradient is `nothing` for node $new_output_node"
             return
         end
         grad_a_unshaped = output_grad ./ denom_stable
@@ -210,7 +210,7 @@ function Base.:^(a::Node{T}, n_val::Real) where {T<:Real}
     val_a = value(a)
     n_T = T(n_val)
     if any(x -> x < 0 && (n_T != round(n_T) && n_T < 1.0), val_a)
-         @warn "Potęgowanie ujemnej podstawy w Node $(a) do wykładnika $(n_T) może prowadzić do problemów."
+         @warn @warn "Power with negative base: $a ^ $n_T may be unstable"
     end
     result_val = val_a .^ n_T
     op_inputs = Node[a]
@@ -219,7 +219,7 @@ function Base.:^(a::Node{T}, n_val::Real) where {T<:Real}
     function backward_function_impl()
         output_grad = grad(new_output_node)
         if output_grad === nothing
-            @error "Krytyczny błąd w backward (^) : gradient wyjścia jest 'nothing' dla Node $(new_output_node)."
+            @error "Output gradient is `nothing` for node $new_output_node"
             return
         end
         
@@ -253,7 +253,7 @@ function Base.exp(a::Node{T}) where {T<:Real}
     function backward_function_impl()
         output_grad = grad(new_output_node)
         if output_grad === nothing
-            @error "Krytyczny błąd w backward (exp) : gradient wyjścia jest 'nothing' dla Node $(new_output_node)."
+            @error "Output gradient is `nothing` for node $new_output_node"
             return
         end
         grad_a_unshaped = output_grad .* result_val
@@ -263,11 +263,11 @@ function Base.exp(a::Node{T}) where {T<:Real}
     return new_output_node
 end
 
-function Base.log(a::Node{T}; ϵ::Union{Nothing,Real}=nothing) where {T<:Real}
+function Base.log(a::Node{T}; epsilon::Union{Nothing,Real}=nothing) where {T<:Real}
     val_a = value(a)
-    effective_eps = T(ϵ === nothing ? Base.eps(T(1.0)) : ϵ)
+    effective_eps = T(epsilon === nothing ? Base.eps(T(1.0)) : epsilon)
     if any(x -> x <= zero(T), val_a)
-        @warn "Logarytmowanie niedodatniej wartości w Node $(a). Użyto epsilon $(effective_eps) dla stabilizacji."
+        @warn "Log of non-positive input in node $a. Using epsilon = $effective_eps"
     end
     value_stable_for_log = max.(val_a, effective_eps)
     result_val = log.(value_stable_for_log)
@@ -277,7 +277,7 @@ function Base.log(a::Node{T}; ϵ::Union{Nothing,Real}=nothing) where {T<:Real}
     function backward_function_impl()
         output_grad = grad(new_output_node)
         if output_grad === nothing
-            @error "Krytyczny błąd w backward (log) : gradient wyjścia jest 'nothing' dla Node $(new_output_node)."
+            @error "Output gradient is `nothing` for node $new_output_node"
             return
         end
         grad_a_unshaped = output_grad ./ value_stable_for_log
@@ -297,7 +297,7 @@ function Base.max(a::Node{T}, scalar_val::Real) where {T<:Real}
     function backward_function_impl()
         output_grad = grad(new_output_node)
         if output_grad === nothing
-            @error "Krytyczny błąd w backward (max) : gradient wyjścia jest 'nothing' dla Node $(new_output_node)."
+            @error "Output gradient is `nothing` for node $new_output_node"
             return
         end
         mask = T.(val_a .> val_T_scalar)
@@ -318,11 +318,11 @@ function Base.sum(a::Node{T}) where {T<:Real}
     function backward_function_impl()
         output_grad = grad(new_output_node)
         if output_grad === nothing
-            @error "Krytyczny błąd w backward (sum) : gradient wyjścia jest 'nothing' dla Node $(new_output_node)."
+            @error "Output gradient is `nothing` for node $new_output_node"
             return
         end
         if !isa(output_grad, Real)
-             @warn "Oczekiwano skalarnego gradientu dla operacji sum dla Node $(new_output_node), otrzymano $(typeof(output_grad)) o rozmiarze $(size(output_grad))."
+             @warn "Expected scalar gradient in sum for node $new_output_node, got $(typeof(output_grad)) with shape $(size(output_grad))"
         end
         grad_a_filled = fill(output_grad, size(val_a))
         accumulate_gradient!(a, grad_a_filled)
@@ -340,7 +340,7 @@ function relu(a::Node{T}) where {T<:Real}
     function backward_function_impl()
         output_grad = grad(new_output_node)
         if output_grad === nothing
-            @error "Krytyczny błąd w backward (relu) : gradient wyjścia jest 'nothing' dla Node $(new_output_node)."
+            @error "Output gradient is `nothing` for node $new_output_node"
             return
         end
         mask = T.(val_a .> zero(T))
@@ -369,7 +369,7 @@ function sigmoid(a::Node{T}) where {T<:Real}
     function backward_function_impl()
         output_grad = grad(new_output_node)
         if output_grad === nothing
-            @error "Krytyczny błąd w backward (sigmoid) : gradient wyjścia jest 'nothing' dla Node $(new_output_node)."
+            @error "Output gradient is `nothing` for node $new_output_node"
             return
         end
         s_val = result_val
@@ -389,12 +389,42 @@ function Base.tanh(a::Node{T}) where {T<:Real}
     function backward_function_impl()
         output_grad = grad(new_output_node)
         if output_grad === nothing
-            @error "Krytyczny błąd w backward (tanh) : gradient wyjścia jest 'nothing' dla Node $(new_output_node)."
+            @error "Output gradient is `nothing` for node $new_output_node"
             return
         end
         grad_a_unshaped = output_grad .* (one(T) .- result_val .^ 2)
         accumulate_gradient!(a, sum_to(grad_a_unshaped, size(val_a)))
     end
     new_output_node = Node(result_val, op_inputs, backward_function_impl)
+    return new_output_node
+end
+
+function softmax(logits::Node{T}) where T<:Real
+    logits_val = value(logits)
+    
+    max_l = maximum(logits_val, dims=2)
+    exp_l = exp.(logits_val .- max_l)
+    sum_exp_l = sum(exp_l, dims=2)
+    probs = exp_l ./ sum_exp_l
+
+    op_inputs = [logits]
+    local new_output_node
+
+    function backward_function_impl()
+        output_grad = grad(new_output_node)
+        if output_grad === nothing
+            @error "Output gradient is `nothing` for node $new_output_node"
+            return
+        end
+        
+        p = value(new_output_node)
+        
+        grad_sum_term = sum(output_grad .* p, dims=2)
+        grad_logits = p .* (output_grad .- grad_sum_term)
+        
+        accumulate_gradient!(logits, grad_logits)
+    end
+    
+    new_output_node = Node(probs, op_inputs, backward_function_impl)
     return new_output_node
 end

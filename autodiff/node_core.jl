@@ -11,7 +11,7 @@ mutable struct Node{T<:Real}
     end
 
     # Constructor for internal nodes (results of operations)
-    function Node(val::Union{T, AbstractArray{T}}, operation_inputs::Vector{Node}, bwd_func::Function) where {T<:Real}
+    function Node(val::Union{T, AbstractArray{T}}, operation_inputs::Vector{<:Node}, bwd_func) where {T<:Real}
         new{T}(val, nothing, operation_inputs, bwd_func, false)
     end
 end
